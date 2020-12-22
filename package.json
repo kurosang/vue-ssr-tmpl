@@ -1,19 +1,20 @@
 {
-  "name": "demo",
+  "name": "vue-ssr-tmpl",
   "version": "0.1.0",
   "private": true,
-  "scriptsRemark": "scripts注释：build:开头的和start都是生产环境ssr的，dev开头的是开发环境ssr，前面两个是客户端渲染",
   "scripts": {
-    "serve": "vue-cli-service serve",
-    "build": "vue-cli-service build",
-    "lint": "vue-cli-service lint",
+    "dev:client": "vue-cli-service serve --mode dev",
+    "dev:ssr": "cross-env BUILD_TARGET=node NODE_ENV=dev node ./server/ssr.js",
+    "dev:all": "concurrently \"vue-cli-service serve --mode dev --port 8081\" \"npm run dev:ssr\" ",
+    "dev": "cross-env NODE_DEPLOY=dev npm run dev:all",
+
     "build:client": "vue-cli-service build",
-    "build:server": "cross-env WEBPACK_TARGET=node vue-cli-service build --mode server",
-    "build:win": "npm run build:server  && npm run build:client -- --no-clean",
-    "start": " npm run build:win && rimraf dist/index.html && node server.js",
-    "dev:serve": "cross-env WEBPACK_TARGET=node node ./server/ssr.js",
-    "dev": "concurrently \"npm run serve\" \"npm run dev:serve\" ",
-    "debug": "cross-env WEBPACK_TARGET=node node --inspect ./server/ssr.js"
+    "build:ssr": "cross-env BUILD_TARGET=node vue-cli-service build --no-clean",
+    "build:all": "npm run build:client && cross-env NODE_PORT=9080 npm run build:ssr",
+    "build": "cross-env NODE_DEPLOY=prod npm run build:all",
+    
+    "lint": "vue-cli-service lint",
+    "dist": "cross-env NODE_DEPLOY=t1 NODE_ENV=production node ./dist/server"
   },
   "dependencies": {
     "@koa/router": "^10.0.0",
@@ -32,7 +33,8 @@
     "@vue/cli-service": "~4.5.0",
     "babel-eslint": "^10.1.0",
     "concurrently": "^5.3.0",
-    "cross-env": "^7.0.2",
+    "copy-webpack-plugin": "^7.0.0",
+    "cross-env": "^7.0.3",
     "eslint": "^6.7.2",
     "eslint-plugin-vue": "^6.2.2",
     "koa": "^2.13.0",
