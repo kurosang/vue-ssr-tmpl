@@ -47,9 +47,170 @@
 - configureWebpack.plugin[]：增加 webpack.DefinePlugin(),生产环境时加上 CopyWebpackPlugin()复制必要的文件去 dist 目录
 - chainWebpack： 1.增加 alias 别名。2.config.plugin('html')替换 public/index.html 的模板。3.node 端修复没有 document 的问题。4.设置缓存名字，区别客户端
 
+### Proxy 处理（代理）
+
+在 config/index 里写下配置 proxyMap{}
+
+客户端在 vue.config 里面配置 devServer 对象：
+
+```
+devServer: {
+    headers: { 'Access-Control-Allow-Origin': '*' },
+    proxy: deployConfig.dev.proxyTable,
+    disableHostCheck: true //  新增该配置项 fix ssr console error
+  },
+```
+
+服务端在 server/setup-dev-server 里配置：
+
+```
+function devMiddleWare(app) {
+  // 接口代理
+  const proxyTable = config.dev.proxyTable;
+  Object.keys(proxyTable).forEach(function(key) {
+    const item = proxyTable[key];
+    if (item.pathRewrite) {
+      // fix server koa proxy no working pathRewrite
+      let pathRewriteKey = Object.keys(item.pathRewrite)[0];
+      item.rewrite = path =>
+        path.replace(
+          new RegExp(pathRewriteKey),
+          item.pathRewrite[pathRewriteKey]
+        );
+    }
+    app.use(proxy(key, item));
+  });
+  // 静态资源代理
+  app.use(async (ctx, next) => {
+    //服务端渲染命中的继续走 server.index
+    //非命中的统一走前端渲染
+    if (isServerRenderPage(ctx, ctx.cookie || {})) {
+      await next();
+    } else {
+      await proxy(ctx.path, {
+        target: staticHost,
+        changeOrigin: true
+      })(ctx, next);
+    }
+  });
+}
+
+```
+
+### server 文件夹改造
+
+##### 新增 index.template.html 作为 ssr 模板 html
+
+##### dev.ssr.js 改为 setup-dev-server.js，同时增加 setup-prod-server.js，同时抽出共同部分作为 server/index.js
+
+**server/index.js**
+安装 koa-static、koa-cookie、koa-mount、lru-cache、koa-morgan
+
+koa-static：静态资源中间件
+
+```
+app.use(require('koa-static')(root, opts));
+```
+
+koa-mount：将其它应用程序作为中间件挂载，传递给 mount() 函数的路径参数暂时从 URL 里剥离出来，直到堆栈释放。对于创建不管用于那个路径且功能正常的整个 app 或 中间件是很有用。
+
+```
+const mount = require('koa-mount');
+const Koa = require('koa');
+
+// hello
+
+const a = new Koa();
+
+a.use(async function (ctx, next){
+  await next();
+  ctx.body = 'Hello';
+});
+
+// world
+
+const b = new Koa();
+
+b.use(async function (ctx, next){
+  await next();
+  ctx.body = 'World';
+});
+
+// app
+
+const app = new Koa();
+
+app.use(mount('/hello', a));
+app.use(mount('/world', b));
+
+app.listen(3000);
+console.log('listening on port 3000');
+```
+
+尝试下面的请求：
+
+```
+$ GET /
+Not Found
+
+$ GET /hello
+Hello
+
+$ GET /world
+World
+```
+
+koa-static 结合 koa-mount 使用：
+
+```
+app.use(mount('/static', koaStatic(resolve('../static'))))
+```
+
+主要解决：CLI3 build 后默认资源文件过于分类，CDN 指向不太方便，重新指定 static 会更利于后续使用
+
+koa-cookie：？好像 koa 自带有？
+
+lru-cache：Least Recently Used，按照字面意思就是最近最少使用，用这种算法来实现缓存就比较合适了，当缓存满了的时候，不经常使用的就直接删除，挪出空间来缓存新的对象；根据 Vue SSR 渲染指南，我们在做`组件级别缓存 (Component-level Caching)`时，传入 lru-cache 实现。我们在 createBundleRenderer 方法里的第二个参数设置
+
+```
+const LRU = require('lru-cache')
+createBundleRenderer(
+    bundle,
+    {
+      cache: new LRU({
+        max: 1000,
+        maxAge: 1000 * 60 * 5
+      }),
+    }
+  )
+```
+
+koa-morgan：記錄存取 Log
+
+```
+const accessLogStream = fs.createWriteStream(__dirname + '/access.log',{ flags: 'a' });
+app.use(morgan('combined', { stream: accessLogStream }));
+```
+
+#### 增加是否前后端渲染控制
+
+server/ssr-page-config.js
+
+```
+// 处理请求
+app.use(async (ctx, next) => {
+  if (isServerRenderPage(ctx, ctx.cookie || {})) {
+    await ssrRequestHandle(ctx, next)
+  } else {
+    ctx.body = spaTemplate
+  }
+})
+```
+
+主要是返回一个方法判断这个页面是不是 ssr，在 server/index.js 调用
+
 待解决：
 
-- 无 Proxy 处理
 - 通过修改 baseUrl，修改 服务端渲染页面的前端静态资源地址，不够优雅，并且可能导致前端渲染刷新页面导致 404 无法访问
 - 无 AsyncData 等处理，文章只提供了页面渲染，实际业务中有接口请求，有 loading 等功能，这些通常是工程化项目需要具备
 - 增加是否前后端渲染控制

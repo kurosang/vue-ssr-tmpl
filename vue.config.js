@@ -21,11 +21,11 @@ module.exports = {
     extract: process.env.NODE_ENV === 'production',
     sourceMap: !isDev && !TARGET_NODE, // if enable sourceMap:  fix ssr load Critical CSS throw replace of undefind
   },
-  // devServer: {
-  //   headers: { 'Access-Control-Allow-Origin': '*' },
-  //   proxy: deployConfig.dev.proxyTable,
-  //   disableHostCheck: true //  新增该配置项 fix ssr console error
-  // },
+  devServer: {
+    headers: { 'Access-Control-Allow-Origin': '*' },
+    proxy: deployConfig.dev.proxyTable,
+    disableHostCheck: true, //  新增该配置项 fix ssr console error
+  },
   transpileDependencies: [],
   configureWebpack: () => ({
     // 将 entry 指向应用程序的 server / client 文件
@@ -82,7 +82,7 @@ module.exports = {
             {
               from: resolve('./server/pm2.config.template.js'),
               to: resolve('./dist/server/pm2.config.js'),
-              transform: function (content) {
+              transform: function(content) {
                 return content
                   .toString()
                   .replace('NODE_ENV_VALUE', process.env.NODE_ENV)
@@ -95,7 +95,7 @@ module.exports = {
               to: resolve('./dist'),
             },
             {
-              from: resolve('./package-lock.json'),
+              from: resolve('./yarn.lock'),
               to: resolve('./dist'),
             },
           ])
@@ -168,7 +168,7 @@ module.exports = {
 // deploy config converter
 function getDeployConfigDefine() {
   let config = {}
-  Object.keys(deployConfig.env).forEach(function (key) {
+  Object.keys(deployConfig.env).forEach(function(key) {
     config[key] = `"${deployConfig.env[key]}"`
   })
   return config
