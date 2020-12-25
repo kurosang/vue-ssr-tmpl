@@ -1,7 +1,11 @@
 import { createApp } from './main'
+const { app, router, store } = createApp()
 
-// 客户端特定引导逻辑……
-const { app } = createApp()
-
-// 这里假定 App.vue 模板中根元素具有 `id="app"`
-app.$mount('#app')
+// prime the store with server-initialized state.
+// the state is determined during SSR and inlined in the page markup.
+if (window.__INITIAL_STATE__) {
+  store.replaceState(window.__INITIAL_STATE__)
+}
+router.onReady(() => {
+  app.$mount('#app')
+})

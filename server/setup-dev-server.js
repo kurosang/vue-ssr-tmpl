@@ -75,6 +75,7 @@ function serverLog() {
 
 async function setupServer(app, createRenderer) {
   devMiddleWare(app)
+
   renderer = createRenderer
 }
 

@@ -192,6 +192,18 @@ const accessLogStream = fs.createWriteStream(__dirname + '/access.log',{ flags: 
 app.use(morgan('combined', { stream: accessLogStream }));
 ```
 
+**server/setup-dev-server.js**
+
+主要暴露了 setupServer 和 setupAppServer。
+
+setupAppServer：主要是修复 WebSocket 的 bug，暂不研究。
+
+setupServer：
+
+- 对比生产环境，主要作用也是通过 bundle 和 manifest 生成 renderer。但由于在 dev，我们需要热更新，所以使用 webpack compiler 监听，当发现文件有修改时，重新打包。
+- 通过 index.js 调用 setupServer 方法，把 createBundleRenderer 传给`setup-dev-server.js`里的 renderer 方法，等每次有文件有变化时，相当于重新 createBundleRenderer。
+- 同时 dev 做了静态资源代理和接口代理
+
 #### 增加是否前后端渲染控制
 
 server/ssr-page-config.js
@@ -209,15 +221,57 @@ app.use(async (ctx, next) => {
 
 主要是返回一个方法判断这个页面是不是 ssr，在 server/index.js 调用
 
-待解决：
+#### 无 AsyncData 等处理，文章只提供了页面渲染，实际业务中有接口请求，有 loading 等功能，这些通常是工程化项目需要具备
 
-- 通过修改 baseUrl，修改 服务端渲染页面的前端静态资源地址，不够优雅，并且可能导致前端渲染刷新页面导致 404 无法访问
-- 无 AsyncData 等处理，文章只提供了页面渲染，实际业务中有接口请求，有 loading 等功能，这些通常是工程化项目需要具备
-- 增加是否前后端渲染控制
-- TDK 支持
-- PM2 支持
-- DIST 处理
+现在好像出了一种新的获取数据方式 api，serverPrefetch vs asyncData，具体还未深入了解。
 
-由于文章写了没多少就没下文了，我打算根据他的 github 项目一步步实现上面这些
+之前，我们推荐使用 asyncData ()在 router.getMatchedComponents ()方法中获取的组件中，获取数据。
 
-# Proxy 处理
+新版本中有一个特别的组件方法：serverPrefetch() 。vue-server-renderer 会在每个组件中调用它，它会返回一个 promise。
+
+我们使用 asyncData 的时候，是在`entry-server.js`里，匹配组件，然后调用组件的 asycData 方法，再通过回调把数据传到 store
+
+serverPrefetch，只需在 router.onReady 里监听 context.rendered，进行 store 赋值
+
+详细，之后再去了解。//todo...
+
+#### 改造 src
+
+**main.js**
+
+- 1.引入`vuex-router-sync`,它的作用是同步路由信息到 store
+
+```
+import { sync } from 'vuex-router-sync'
+export function createApp() {
+  const router = createRouter()
+  const store = createStore()
+  // sync the router with the vuex store.
+  // this registers `store.state.route`
+  sync(store, router)
+  const app = new Vue({
+    router,
+    store,
+    render: h => h(App)
+  })
+  return { app, router, store }
+}
+```
+
+该库是在 store 上增加了一个名为 route 的模块，用于表示当前路由的状态,当被导航到一个新路由时，store 的状态会被更新。store.state.route 是不可变更的，因为该值取自 URL，是真实的来源。你不应该通过修改该值去触发浏览器的导航行为。取而代之的是调用 \$router.push() 或者 $router.go()。另外，你可以通过 \$router.push({ query: {...}}) 来更新当前路径的查询字符串。
+
+**entry-server.js**
+
+改造配合 serverPrefetch()使用
+
+#### TDK 支持
+
+TDK（T：title，页面的标题；D：Description，页面的描述文字；K：keywords，页面关键词），对于网站标题、描述、关键字的设置优化不用说当然是为了后期网站更好的展现在搜索引擎中，使更多的用户知道我们的网站。
+
+封装动态更新 tdk 的方法，可以根据不同页面，接口返回来的数据来设置不一样
+
+#### DIST 处理
+
+使用 webpack 插件 CopyWebpackPlugin 可以把 server 里用到的文件复制到打包好的 dist 文件夹下，用的时候只需直接拿 dist 文件夹
+
+#### PM2 支持

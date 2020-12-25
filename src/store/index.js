@@ -5,8 +5,13 @@ Vue.use(Vuex)
 
 export function createStore() {
   return new Vuex.Store({
-    state: {},
-    mutations: {},
-    actions: {},
+    state: {
+      envConfig: process.env.config,
+      topicsList: null,
+      topicDetail: null,
+    },
+    mutations,
+    actions,
+    getters,
   })
 }
